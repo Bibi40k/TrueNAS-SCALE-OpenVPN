@@ -33,14 +33,10 @@ In your home directory, you will have `.ovpn` files. These are the client config
 
 **PLEASE do not send me emails or private messages asking for help.** The only place to get help is the issues. Other people may be able to help and in the future, other users may also run into the same issue as you. My time is not available for free just for you, you're not special.
 
-## Fork
+## Fork & Credits
 
-This script is based on the great work of [angristan and its contributors](https://github.com/angristan/openvpn-install).
+This script is based on the great work of [angristan and its contributors](https://github.com/angristan/openvpn-install) and [Nyr and its contributors](https://github.com/Nyr/openvpn-install).
 
 ## Say thanks
 
 You can [say thanks](https://saythanks.io/to/Bibi40k) if you want!
-
-## Credits
-
-Many thanks to the [contributors](https://github.com/Angristan/OpenVPN-install/graphs/contributors) and Nyr's original work.
