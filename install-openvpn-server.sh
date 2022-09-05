@@ -208,7 +208,7 @@ function installQuestions() {
 	done
 	echo ""
 	echo "Do you want all trafic routed through OpenVPN server?"
-	echo "You can change this anytime later in <user_profile>.ovpn"
+	echo "You can change this anytime later in <client_name>.ovpn"
 	echo "   1) Route all traffic through OpenVPN server and get server's IP"
 	echo "   2) Just access my Local Network and keep my actual IP"
 	until [[ $ROUTED_CHOICE =~ ^[1-2]$ ]]; do
