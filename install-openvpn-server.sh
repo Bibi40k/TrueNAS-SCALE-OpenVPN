@@ -1,16 +1,7 @@
 #!/bin/bash
-# shellcheck disable=SC1091,SC2164,SC2034,SC1072,SC1073,SC1009
 
 # Secure OpenVPN server installer for TrueNAS SCALE on Debian 11 (bullseye).
-# https://github.com/angristan/openvpn-install - © original script
-
-# Usefull commands
-# systemctl status openvpn-server@server # TrueNAS native
-# cat /etc/openvpn/server/server.conf # TrueNAS native
-#
-# systemctl status openvpn@server
-# systemctl list-units --type=service --state=running | grep openvpn
-# cat /etc/openvpn/server.conf
+# https://github.com/Bibi40k/TrueNAS-SCALE-OpenVPN - © original script
 
 function isRoot() {
 	if [ "$EUID" -ne 0 ]; then
@@ -83,8 +74,8 @@ function getHomeDir() {
 }
 
 function installQuestions() {
-	echo "Welcome to the OpenVPN installer!"
-	echo "The git repository is available at: https://github.com/angristan/openvpn-install"
+	echo "Welcome to the TrueNAS SCALE OpenVPN installer!"
+	echo "The git repository is available at: https://github.com/Bibi40k/TrueNAS-SCALE-OpenVPN"
 	echo ""
 
 	echo "I need to ask you a few questions before starting the setup."
@@ -93,11 +84,11 @@ function installQuestions() {
 	echo "I need to know the IPv4 address of the network interface you want OpenVPN listening to."
 	echo "Unless your server is behind NAT, it should be your public IPv4 address."
 
-	# Detect public IPv4 address and pre-fill for the user
+	# Detect server's IPv4 address and pre-fill for the user
 	IP=$(ip -4 addr | sed -ne 's|^.* inet \([^/]*\)/.* scope global.*$|\1|p' | head -1)
 
 	if [[ -z $IP ]]; then
-		# Detect public IPv6 address
+		# Detect server's IPv6 address
 		IP=$(ip -6 addr | sed -ne 's|^.* inet6 \([^/]*\)/.* scope global.*$|\1|p' | head -1)
 	fi
 	APPROVE_IP=${APPROVE_IP:-n}
@@ -177,22 +168,33 @@ function installQuestions() {
 		;;
 	esac
 	echo ""
+	echo "Which DNS resolvers do you use for Local Records (eg: Pi-hole on TrueNAS SCALE)?"
+	APPROVE_LOCALDNS1=${APPROVE_LOCALDNS1:-n}
+	if [[ $APPROVE_LOCALDNS1 =~ n ]]; then
+		read -rp "Primary Local DNS: " -e -i "$IP" LOCALDNS1
+	fi
+	until [[ $LOCALDNS2 =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
+		read -rp "Secondary Local DNS (optional): " -e LOCALDNS2
+		if [[ $LOCALDNS2 == "" ]]; then
+			break
+		fi
+	done
+	echo ""
 	echo "What DNS resolvers do you want to use with the VPN?"
-	echo "   1) Current system resolvers (from /etc/resolv.conf)"
-	echo "   3) Cloudflare (Anycast: worldwide)"
-	echo "   4) Quad9 (Anycast: worldwide)"
-	echo "   5) Quad9 uncensored (Anycast: worldwide)"
-	echo "   6) FDN (France)"
-	echo "   7) DNS.WATCH (Germany)"
-	echo "   8) OpenDNS (Anycast: worldwide)"
-	echo "   9) Google (Anycast: worldwide)"
-	echo "   10) Yandex Basic (Russia)"
-	echo "   11) AdGuard DNS (Anycast: worldwide)"
-	echo "   12) NextDNS (Anycast: worldwide)"
-	echo "   13) Custom"
+	echo "   1) Cloudflare (Anycast: worldwide)"
+	echo "   2) Quad9 (Anycast: worldwide)"
+	echo "   3) Quad9 uncensored (Anycast: worldwide)"
+	echo "   4) FDN (France)"
+	echo "   5) DNS.WATCH (Germany)"
+	echo "   6) OpenDNS (Anycast: worldwide)"
+	echo "   7) Google (Anycast: worldwide)"
+	echo "   8) Yandex Basic (Russia)"
+	echo "   9) AdGuard DNS (Anycast: worldwide)"
+	echo "   10) NextDNS (Anycast: worldwide)"
+	echo "   11) Custom"
 	until [[ $DNS =~ ^[0-9]+$ ]] && [ "$DNS" -ge 1 ] && [ "$DNS" -le 13 ]; do
-		read -rp "DNS [1-12]: " -e -i 3 DNS
-		if [[ $DNS == "13" ]]; then
+		read -rp "DNS [1-10]: " -e -i 1 DNS
+		if [[ $DNS == "11" ]]; then
 			until [[ $DNS1 =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; do
 				read -rp "Primary DNS: " -e DNS1
 			done
@@ -204,6 +206,22 @@ function installQuestions() {
 			done
 		fi
 	done
+	echo ""
+	echo "Do you want all trafic routed through OpenVPN server?"
+	echo "You can change this anytime later in <user_profile>.ovpn"
+	echo "   1) Route all traffic through OpenVPN server and get server's IP"
+	echo "   2) Just access my Local Network and keep my actual IP"
+	until [[ $ROUTED_CHOICE =~ ^[1-2]$ ]]; do
+		read -rp "Routed traffic [1-2]: " -e -i 2 ROUTED_CHOICE
+	done
+	case $ROUTED_CHOICE in
+	1)
+		ROUTED="1"
+		;;
+	2)
+		ROUTED="2"
+		;;
+	esac
 	echo ""
 	echo "Do you want to use compression? It is not recommended since the VORACLE attack makes use of it."
 	until [[ $COMPRESSION_ENABLED =~ (y|n) ]]; do
@@ -460,29 +478,6 @@ function installQuestions() {
 }
 
 function installOpenVPN() {
-	if [[ $AUTO_INSTALL == "y" ]]; then
-		# Set default choices so that no questions will be asked.
-		APPROVE_INSTALL=${APPROVE_INSTALL:-y}
-		APPROVE_IP=${APPROVE_IP:-y}
-		IPV6_SUPPORT=${IPV6_SUPPORT:-n}
-		PORT_CHOICE=${PORT_CHOICE:-1}
-		PROTOCOL_CHOICE=${PROTOCOL_CHOICE:-1}
-		DNS=${DNS:-1}
-		COMPRESSION_ENABLED=${COMPRESSION_ENABLED:-n}
-		CUSTOMIZE_ENC=${CUSTOMIZE_ENC:-n}
-		CLIENT=${CLIENT:-client}
-		PASS=${PASS:-1}
-		CONTINUE=${CONTINUE:-y}
-
-		# Behind NAT, we'll default to the publicly reachable IPv4/IPv6.
-		if [[ $IPV6_SUPPORT == "y" ]]; then
-			PUBLIC_IP=$(curl --retry 5 --retry-connrefused https://ifconfig.co)
-		else
-			PUBLIC_IP=$(curl --retry 5 --retry-connrefused -4 https://ifconfig.co)
-		fi
-		ENDPOINT=${ENDPOINT:-$PUBLIC_IP}
-	fi
-
 	# Run setup questions first, and set other variables if auto-install
 	installQuestions
 
@@ -767,79 +762,91 @@ tls-version-min 1.2
 tls-cipher $CC_CIPHER
 ignore-unknown-option block-outside-dns
 setenv opt block-outside-dns # Prevent Windows 10 DNS leak
-verb 3
-# Uncomment next 3 lines if you want all trafic routed through OpenVPN" >>/etc/openvpn/client-template.txt
+verb 3" >>/etc/openvpn/client-template.txt
 
 	if [[ $COMPRESSION_ENABLED == "y" ]]; then
 		echo "compress $COMPRESSION_ALG" >>/etc/openvpn/client-template.txt
 	fi
 
+	# Local DNS resolvers
+	echo "# Local DNS records" >>/etc/openvpn/client-template.txt
+	echo "dhcp-option DNS $LOCALDNS1" >>/etc/openvpn/client-template.txt
+	if [[ $LOCALDNS2 != "" ]]; then
+		echo "dhcp-option DNS $LOCALDNS2" >>/etc/openvpn/client-template.txt
+	fi
+
 	# DNS resolvers
 	case $DNS in
-	1) # Current system resolvers
-		# Locate the proper resolv.conf
-		# Needed for systems running systemd-resolved
-		if grep -q "127.0.0.53" "/etc/resolv.conf"; then
-			RESOLVCONF='/run/systemd/resolve/resolv.conf'
-		else
-			RESOLVCONF='/etc/resolv.conf'
-		fi
-		# Obtain the resolvers from resolv.conf and use them for OpenVPN
-		sed -ne 's/^nameserver[[:space:]]\+\([^[:space:]]\+\).*$/\1/p' $RESOLVCONF | while read -r line; do
-			# Copy, if it's a IPv4 |or| if IPv6 is enabled, IPv4/IPv6 does not matter
-			if [[ $line =~ ^[0-9.]*$ ]] || [[ $IPV6_SUPPORT == 'y' ]]; then
-				echo "#dhcp-option DNS $line" >>/etc/openvpn/client-template.txt
-			fi
-		done
+	1) # Cloudflare
+		echo "# Cloudflare DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 1.0.0.1" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 1.1.1.1" >>/etc/openvpn/client-template.txt
 		;;
-	3) # Cloudflare
-		echo "#dhcp-option DNS 1.0.0.1" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 1.1.1.1" >>/etc/openvpn/client-template.txt
+	2) # Quad9
+		echo "# Quad9 DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 9.9.9.9" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 149.112.112.112" >>/etc/openvpn/client-template.txt
 		;;
-	4) # Quad9
-		echo "#dhcp-option DNS 9.9.9.9" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 149.112.112.112" >>/etc/openvpn/client-template.txt
+	3) # Quad9 uncensored
+		echo "# Quad9 uncensored DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 9.9.9.10" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 149.112.112.10" >>/etc/openvpn/client-template.txt
 		;;
-	5) # Quad9 uncensored
-		echo "#dhcp-option DNS 9.9.9.10" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 149.112.112.10" >>/etc/openvpn/client-template.txt
+	4) # FDN
+		echo "# FDN DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 80.67.169.40" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 80.67.169.12" >>/etc/openvpn/client-template.txt
 		;;
-	6) # FDN
-		echo "#dhcp-option DNS 80.67.169.40" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 80.67.169.12" >>/etc/openvpn/client-template.txt
+	5) # DNS.WATCH
+		echo "# DNS.WATCH DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 84.200.69.80" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 84.200.70.40" >>/etc/openvpn/client-template.txt
 		;;
-	7) # DNS.WATCH
-		echo "#dhcp-option DNS 84.200.69.80" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 84.200.70.40" >>/etc/openvpn/client-template.txt
+	6) # OpenDNS
+		echo "# OpenDNS DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 208.67.222.222" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 208.67.220.220" >>/etc/openvpn/client-template.txt
 		;;
-	8) # OpenDNS
-		echo "#dhcp-option DNS 208.67.222.222" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 208.67.220.220" >>/etc/openvpn/client-template.txt
+	7) # Google
+		echo "# Google DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 8.8.8.8" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 8.8.4.4" >>/etc/openvpn/client-template.txt
 		;;
-	9) # Google
-		echo "#dhcp-option DNS 8.8.8.8" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 8.8.4.4" >>/etc/openvpn/client-template.txt
+	8) # Yandex Basic
+		echo "# Yandex DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 77.88.8.8" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 77.88.8.1" >>/etc/openvpn/client-template.txt
 		;;
-	10) # Yandex Basic
-		echo "#dhcp-option DNS 77.88.8.8" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 77.88.8.1" >>/etc/openvpn/client-template.txt
+	9) # AdGuard DNS
+		echo "# AdGuard DNS DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 94.140.14.14" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 94.140.15.15" >>/etc/openvpn/client-template.txt
 		;;
-	11) # AdGuard DNS
-		echo "#dhcp-option DNS 94.140.14.14" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 94.140.15.15" >>/etc/openvpn/client-template.txt
+	10) # NextDNS
+		echo "# NextDNS DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 45.90.28.167" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS 45.90.30.167" >>/etc/openvpn/client-template.txt
 		;;
-	12) # NextDNS
-		echo "#dhcp-option DNS 45.90.28.167" >>/etc/openvpn/client-template.txt
-		echo "#dhcp-option DNS 45.90.30.167" >>/etc/openvpn/client-template.txt
-		;;
-	13) # Custom DNS
-		echo "#dhcp-option DNS $DNS1" >>/etc/openvpn/client-template.txt
+	11) # Custom DNS
+		echo "# Custom DNS resolvers" >>/etc/openvpn/client-template.txt
+		echo "dhcp-option DNS $DNS1" >>/etc/openvpn/client-template.txt
 		if [[ $DNS2 != "" ]]; then
-			echo "#dhcp-option DNS $DNS2" >>/etc/openvpn/client-template.txt
+			echo "dhcp-option DNS $DNS2" >>/etc/openvpn/client-template.txt
 		fi
 		;;
 	esac
-	echo "#redirect-gateway def1 bypass-dhcp" >>/etc/openvpn/client-template.txt
+	
+	# Routed traffic through OpenVPN server
+	echo "# Comment next line if you just want to access your Local Network and keep your actual IP" >>/etc/openvpn/client-template.txt
+	echo "# Uncomment next line if you want to route all traffic through OpenVPN server and get server's IP" >>/etc/openvpn/client-template.txt
+	case $ROUTED in
+	1) # Yes
+		echo "redirect-gateway def1 bypass-dhcp" >>/etc/openvpn/client-template.txt
+		;;
+	2) # No
+		echo "#redirect-gateway def1 bypass-dhcp" >>/etc/openvpn/client-template.txt
+		;;
+	esac
 
 	# Generate the custom client.ovpn
 	newClient
@@ -859,7 +866,7 @@ function newClient() {
 	echo "Do you want to protect the configuration file with a password?"
 	echo "(e.g. encrypt the private key with a password)"
 	echo "   1) Add a passwordless client"
-	echo "   2) Use a password for the client"
+	echo "   2) Use a password for the client (must be 4 to 1024 characters)"
 
 	until [[ $PASS =~ ^[1-2]$ ]]; do
 		read -rp "Select an option [1-2]: " -e -i 2 PASS
@@ -1044,7 +1051,7 @@ function manageMenu() {
 initialCheck
 
 # Check if OpenVPN is already installed
-if [[ -e /etc/openvpn/server.conf && $AUTO_INSTALL != "y" ]]; then
+if [[ -e /etc/openvpn/server.conf ]]; then
 	manageMenu
 else
 	installOpenVPN
