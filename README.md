@@ -29,7 +29,7 @@ When OpenVPN is installed, you can run the script again, and you will get the ch
 - Revoke a client
 - Uninstall OpenVPN
 
-In your home directory, you will have `<user_profile>.ovpn` files. These are the client configuration files. Download them from your server and connect using your favorite OpenVPN client.
+In your home directory, you will have `<client_name>.ovpn` files. These are the client configuration files. Download them from your server and connect using your favorite OpenVPN client.
 
 **PLEASE do not send me emails or private messages asking for help.** The only place to get help is the issues. Other people may be able to help and in the future, other users may also run into the same issue as you.
 
