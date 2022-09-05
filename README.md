@@ -26,20 +26,20 @@ The first time you run it, you'll have to follow the assistant and answer a few 
 When OpenVPN is installed, you can run the script again, and you will get the choice to:
 
 - Add a client
-- Remove a client
+- Revoke a client
 - Uninstall OpenVPN
 
-In your home directory, you will have `.ovpn` files. These are the client configuration files. Download them from your server and connect using your favorite OpenVPN client.
+In your home directory, you will have `<user_profile>.ovpn` files. These are the client configuration files. Download them from your server and connect using your favorite OpenVPN client.
 
 **PLEASE do not send me emails or private messages asking for help.** The only place to get help is the issues. Other people may be able to help and in the future, other users may also run into the same issue as you.
 
-## Fork & Credits
+## Fork & credits
 
 This script is based on the great work of [angristan and its contributors](https://github.com/angristan/openvpn-install) and [Nyr and its contributors](https://github.com/Nyr/openvpn-install).
 
 ## Say thanks
 
-You can [say thanks](https://saythanks.io/to/Bibi40k) if you want!
+You can [say thanks](https://saythanks.io/to/Bibi40k) if you want.
 
 ## TrueNAS SCALE useful related commands
 ```bash
