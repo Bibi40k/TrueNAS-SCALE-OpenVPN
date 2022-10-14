@@ -40,6 +40,22 @@ function checkOS() {
 	fi
 }
 
+function checkTrueNASVersion() {
+	if [[ -e /etc/debian_version ]]; then
+		local trueNASVersion=$(cat /etc/version)
+
+		# Check if TrueNAS was updated
+		local initialTrueNASVersion=$(head -n 1 /etc/openvpn/server.conf | grep -o 'version.*' | cut -f2- -d=)
+		if [[ "$trueNASVersion" != "$initialTrueNASVersion" ]]; then
+			fixMenu
+			exit 1
+		fi
+	else
+		echo "⚠️ Looks like TrueNAS SCALE version is not compatible with this script!"
+		exit 1
+	fi
+}
+
 function initialCheck() {
 	if ! isRoot; then
 		echo "Sorry, you need to run this as root"
@@ -50,6 +66,7 @@ function initialCheck() {
 		exit 1
 	fi
 	checkOS
+	checkTrueNASVersion
 }
 
 function getHomeDir() {
@@ -577,7 +594,8 @@ function installOpenVPN() {
 	chmod 644 /etc/openvpn/crl.pem
 
 	# Generate server.conf
-	echo "port $PORT" >/etc/openvpn/server.conf
+	echo "#TrueNAS version=$trueNASVersion" >/etc/openvpn/server.conf
+	echo "port $PORT" >>/etc/openvpn/server.conf
 	if [[ $IPV6_SUPPORT == 'n' ]]; then
 		echo "proto $PROTOCOL" >>/etc/openvpn/server.conf
 	elif [[ $IPV6_SUPPORT == 'y' ]]; then
@@ -932,6 +950,15 @@ function newClient() {
 	# Backup openvpn to homedir
 	cp -r /etc/openvpn "$homeDir/"
 
+	# Backup files to be used after TrueNAS updates
+	SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+	
+	mkdir -p $SCRIPT_DIR/openvpn/_fixes
+	cp /etc/systemd/system/openvpn\@.service $SCRIPT_DIR/openvpn/_fixes/
+	cp /etc/iptables/add-openvpn-rules.sh $SCRIPT_DIR/openvpn/_fixes/
+	cp /etc/iptables/rm-openvpn-rules.sh $SCRIPT_DIR/openvpn/_fixes/
+	cp /etc/sysctl.d/99-openvpn.conf $SCRIPT_DIR/openvpn/_fixes/
+
 	echo ""
 	echo "The configuration file has been written to $homeDir/$CLIENT.ovpn."
 	echo "Download the .ovpn file and import it in your OpenVPN client."
@@ -1016,6 +1043,47 @@ function removeOpenVPN() {
 	fi
 }
 
+function fixInstall() {
+	# Backup files to be used after TrueNAS updates
+	SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+	mkdir -p /etc/iptables
+	cp $SCRIPT_DIR/openvpn/_fixes/add-openvpn-rules.sh /etc/iptables/
+	chmod +x /etc/iptables/add-openvpn-rules.sh
+	cp $SCRIPT_DIR/openvpn/_fixes/rm-openvpn-rules.sh /etc/iptables/
+	chmod +x /etc/iptables/rm-openvpn-rules.sh
+	cp $SCRIPT_DIR/openvpn/_fixes/iptables-openvpn.service /etc/systemd/system/
+	cp $SCRIPT_DIR/openvpn/_fixes/openvpn\@.service /etc/systemd/system/
+
+	cp $SCRIPT_DIR/openvpn/_fixes/99-openvpn.conf /etc/sysctl.d/
+	# Apply sysctl rules
+	sysctl --system
+
+	# If SELinux is enabled and a custom port was selected, we need this
+	if hash sestatus 2>/dev/null; then
+		if sestatus | grep "Current mode" | grep -qs "enforcing"; then
+			if [[ $PORT != '1194' ]]; then
+				semanage port -a -t openvpn_port_t -p "$PROTOCOL" "$PORT"
+			fi
+		fi
+	fi
+
+	# Update TrueNAS version
+	sed -i "1s/.*/#TrueNAS version=$trueNASVersion/" $SCRIPT_DIR/openvpn/server.conf
+	sed -i "1s/.*/#TrueNAS version=$trueNASVersion/" /etc/openvpn/server.conf
+
+	# Enable service and apply rules
+	systemctl daemon-reload
+	systemctl enable iptables-openvpn
+	systemctl start iptables-openvpn
+
+	# Finally, restart and enable OpenVPN
+	systemctl daemon-reload
+	systemctl enable openvpn@server
+	systemctl restart openvpn@server
+	systemctl daemon-reload
+}
+
 function manageMenu() {
 	echo "Welcome to OpenVPN-install!"
 	echo "The git repository is available at: https://github.com/angristan/openvpn-install"
@@ -1042,6 +1110,33 @@ function manageMenu() {
 		removeOpenVPN
 		;;
 	4)
+		exit 0
+		;;
+	esac
+}
+
+function fixMenu() {
+	echo "Welcome to OpenVPN-install!"
+	echo "The git repository is available at: https://github.com/Bibi40k/TrueNAS-SCALE-OpenVPN"
+	echo ""
+	echo "It looks like OpenVPN is already installed but TrueNAS was updated from $initialTrueNASVersion to $trueNASVersion"
+	echo ""
+	echo "What do you want to do?"
+	echo "   1) Fix install and keep existing data (you have to reconnect to VPN)"
+	echo "   2) Remove OpenVPN"
+	echo "   3) Exit"
+	until [[ $MENU_OPTION =~ ^[1-3]$ ]]; do
+		read -rp "Select an option [1-3]: " -e -i 1 MENU_OPTION
+	done
+
+	case $MENU_OPTION in
+	1)
+		fixInstall
+		;;
+	2)
+		removeOpenVPN
+		;;
+	3)
 		exit 0
 		;;
 	esac
