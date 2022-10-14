@@ -11,6 +11,7 @@ This script will let you setup your own secure VPN server in just a few seconds.
 First, get the script and make it executable:
 
 ```bash
+cd
 curl -O https://raw.githubusercontent.com/Bibi40k/TrueNAS-SCALE-OpenVPN/master/install-openvpn-server.sh
 chmod +x install-openvpn-server.sh
 ```
