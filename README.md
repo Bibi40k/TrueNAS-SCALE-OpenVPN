@@ -1,4 +1,5 @@
 # TrueNAS-SCALE-OpenVPN-server-install
+
 ![visitors](https://visitor-badge.glitch.me/badge?page_id=Bibi40k.TrueNAS-SCALE-OpenVPN)
 [![Say Thanks!](https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg)](https://saythanks.io/to/Bibi40k)
 
@@ -31,6 +32,10 @@ When OpenVPN is installed, you can run the script again, and you will get the ch
 - Uninstall OpenVPN
 
 In your home directory, you will have `<client_name>.ovpn` files. These are the client configuration files. Download them from your server and connect using your favorite OpenVPN client.
+
+## On TrueNAS updates
+
+After each updates you need to rerun the script to fix files conf like firewall, port forwarding etc. This is an automatic process.
 
 **PLEASE do not send me emails or private messages asking for help.** The only place to get help is the issues. Other people may be able to help and in the future, other users may also run into the same issue as you.
 
