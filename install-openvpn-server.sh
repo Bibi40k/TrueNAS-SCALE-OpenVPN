@@ -46,7 +46,7 @@ function checkTrueNASVersion() {
 
 		# Check if TrueNAS was updated
 		local initialTrueNASVersion=$(head -n 1 /etc/openvpn/server.conf | grep -o 'version.*' | cut -f2- -d=)
-		if [[ "$trueNASVersion" != "$initialTrueNASVersion" ]]; then
+		if ([[ ! -z "$initialTrueNASVersion" ]] && [[ "$trueNASVersion" != "$initialTrueNASVersion" ]]); then
 			fixMenu
 			exit 1
 		fi
