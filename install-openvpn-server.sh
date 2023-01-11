@@ -40,22 +40,6 @@ function checkOS() {
 	fi
 }
 
-function checkTrueNASVersion() {
-	if [[ -e /etc/debian_version ]]; then
-		local trueNASVersion=$(cat /etc/version)
-
-		# Check if TrueNAS was updated
-		local initialTrueNASVersion=$(head -n 1 /etc/openvpn/server.conf | grep -o 'version.*' | cut -f2- -d=)
-		if ([[ ! -z "$initialTrueNASVersion" ]] && [[ "$trueNASVersion" != "$initialTrueNASVersion" ]]); then
-			fixMenu
-			exit 1
-		fi
-	else
-		echo "⚠️ Looks like TrueNAS SCALE version is not compatible with this script!"
-		exit 1
-	fi
-}
-
 function initialCheck() {
 	if ! isRoot; then
 		echo "Sorry, you need to run this as root"
@@ -88,6 +72,16 @@ function getHomeDir() {
 	fi
 
     echo "$homeDir"
+}
+
+function checkTrueNASVersion() {
+	REALUSER=${SUDO_USER:-${USER}}
+	HOMEDIR=$(eval echo ~${REALUSER})
+
+	if [ -d "${HOMEDIR}" ]; then
+		fixMenu ${HOMEDIR}
+		exit 1
+	fi
 }
 
 function installQuestions() {
@@ -1044,6 +1038,9 @@ function removeOpenVPN() {
 }
 
 function fixInstall() {
+	HOMEDIR = $1
+	cp -r ${HOMEDIR}/openvpn /etc/
+
 	# Backup files to be used after TrueNAS updates
 	SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
@@ -1119,9 +1116,9 @@ function fixMenu() {
 	echo "Welcome to OpenVPN-install!"
 	echo "The git repository is available at: https://github.com/Bibi40k/TrueNAS-SCALE-OpenVPN"
 	echo ""
-	echo "It looks like OpenVPN is already installed but TrueNAS was updated from $initialTrueNASVersion to $trueNASVersion"
+	echo "I have found /openvpn folder in your homedir, i assume you need a fix."
 	echo ""
-	echo "What do you want to do?"
+	echo "What do you want me to do?"
 	echo "   1) Fix install and keep existing data (you have to reconnect to VPN)"
 	echo "   2) Remove OpenVPN"
 	echo "   3) Exit"
@@ -1131,7 +1128,7 @@ function fixMenu() {
 
 	case $MENU_OPTION in
 	1)
-		fixInstall
+		fixInstall $1
 		;;
 	2)
 		removeOpenVPN
